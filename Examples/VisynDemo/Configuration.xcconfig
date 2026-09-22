@@ -1,0 +1,8 @@
+// Configure signing in Configuration.local.xcconfig before running on a device.
+// No personal signing identifiers are provided; the App Group follows the Bundle ID.
+// Both targets inherit these values. Do not edit the app/extension plists separately.
+VISYN_DEMO_BUNDLE_ID = com.example.VisynDemo
+VISYN_APP_GROUP = group.$(VISYN_DEMO_BUNDLE_ID)
+
+// Optional local overrides (ignored by git). Copy Configuration.local.xcconfig.example.
+#include? "Configuration.local.xcconfig"

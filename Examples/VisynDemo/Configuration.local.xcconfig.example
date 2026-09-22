@@ -1,0 +1,4 @@
+// Copy to Configuration.local.xcconfig, then replace these illustrative values.
+DEVELOPMENT_TEAM = YOUR_TEAM_ID
+VISYN_DEMO_BUNDLE_ID = com.yourcompany.VisynDemo
+VISYN_APP_GROUP = group.com.yourcompany.VisynDemo
