@@ -10,6 +10,8 @@ public final class VisynCaptureController {
     public var onError: ((Error) -> Void)?
     public private(set) var state = VisynBroadcastState.stopped
     public var isPictureInPictureActive: Bool { pip.isActive }
+    /// Content layout size in points, not the system-managed floating window's size.
+    public var pictureInPictureContentSize: CGSize { pip.contentSize }
 
     private let configuration: VisynConfiguration
     private let channel: VisynWormholeChannel
@@ -19,10 +21,15 @@ public final class VisynCaptureController {
     private var timer: Timer?
     private var picker: RPSystemBroadcastPickerView?
 
-    public init(configuration: VisynConfiguration, pictureInPictureContent: UIView) throws {
+    /// Frame rate must be within 1...30. The default preserves the low-cost text-only refresh rate.
+    public init(configuration: VisynConfiguration, pictureInPictureContent: UIView,
+                pictureInPictureContentSize: CGSize = VisynPictureInPictureSize.landscape,
+                pictureInPictureFramesPerSecond: Int = 2) throws {
         self.configuration = configuration
+        pip = try VisynPictureInPicturePresenter(content: pictureInPictureContent,
+                                                contentSize: pictureInPictureContentSize,
+                                                framesPerSecond: pictureInPictureFramesPerSecond)
         channel = try VisynWormholeChannel(configuration: configuration)
-        pip = VisynPictureInPicturePresenter(content: pictureInPictureContent)
     }
 
     deinit {
@@ -73,6 +80,14 @@ public final class VisynCaptureController {
 
     public func togglePictureInPicture() {
         if pip.isActive { pip.stop() } else { pip.start() }
+    }
+
+    /// Updates the content's dimensions and aspect ratio, including while PiP is active.
+    /// Each dimension must be finite and within 1...640 points, and is rounded to a whole point.
+    /// Persistence is opt-in through VisynPictureInPictureSize.save(_:to:forKey:).
+    /// iOS controls the floating window's actual size; the user resizes it with a pinch gesture.
+    public func setPictureInPictureContentSize(_ size: CGSize) throws {
+        try pip.setContentSize(size)
     }
 
     private func refreshStatus() {

@@ -10,7 +10,8 @@ Demo 来自最初的录屏测试页，包含：
 
 - 系统面板开始／停止录屏。
 - 显示主程序收到的屏幕帧数量和尺寸。
-- 开启／关闭白底、居中「测试中」的画中画。
+- 开启／关闭白底、居中「测试中」的画中画；默认保留 414 × 80 长条。
+- 选择横屏／竖屏／矩形预设，或手动输入内容宽高；使用 UserDefaults 保存并恢复选择。
 - 展示录屏状态和错误。
 
 模拟器可编译、查看页面和运行通信测试；录屏授权、跨 App 采集、后台与 PiP 效果需要真机验证。
@@ -67,7 +68,9 @@ private var capture: VisynCaptureController?
 func configureCapture() throws {
     let controller = try VisynCaptureController(
         configuration: .load(),
-        pictureInPictureContent: makePiPContent() // 自定义 UIView
+        pictureInPictureContent: makePiPContent(), // 自定义 UIView
+        pictureInPictureContentSize: VisynPictureInPictureSize.load()
+            ?? VisynPictureInPictureSize.landscape // 恢复本地选择；无记录时保持原长条
     )
     controller.onFrame = { frame in
         // frame.jpegData 是方向归一化后的 JPEG。
@@ -82,6 +85,69 @@ func configureCapture() throws {
 // 用户按钮触发，仍须系统面板确认。
 func recordTapped() { capture?.showBroadcastPicker(on: view) }
 func pipTapped() { capture?.togglePictureInPicture() }
+```
+
+### 画中画尺寸接口与本地保存
+
+库提供预设、尺寸接口和可选的 UserDefaults 读写，不包含滑块、拖动手柄或尺寸输入界面；接入 App 自行选择输入方式，Demo 仅演示预设和手动输入。
+
+| 预设（`presets` 中的标题） | 接口 | 宽 × 高（点） | 比例 |
+| --- | --- | --- | --- |
+| 横条（默认） | `VisynPictureInPictureSize.landscape` | 414 × 80 | 约 5.2 : 1 |
+| 竖屏（同微信） | `VisynPictureInPictureSize.portrait` | 90 × 195 | 9 : 19.5 |
+| 方形 | `VisynPictureInPictureSize.rectangle` | 80 × 80 | 1 : 1 |
+
+`VisynPictureInPictureSize.presets` 按上表顺序提供标题和尺寸，接入 App 的设置页可直接用来生成预设按钮。
+
+iOS 只按内容的宽高比决定小窗形状，小窗在屏幕上的实际大小由系统决定（用户可双指缩放），所以 90 × 195 与 180 × 390 得到的小窗形状相同。“竖屏”采用 iPhone 屏幕比例 9 : 19.5，与微信视频通话小窗一致；比例过于细长（如 1 : 4）会让小窗在同样宽度下变得很长。省略初始化的 `pictureInPictureContentSize` 参数时仍为原来的 414 × 80，原有调用兼容。
+
+开启前或运行中均可传入任意有效宽高。外部输入框或滑块在确认尺寸时调用同一接口：
+
+```swift
+func applyPiPSize(_ size: CGSize) throws {
+    guard let capture else { return }
+    try capture.setPictureInPictureContentSize(size)
+    // 成功应用后保存取整后的实际内容尺寸。
+    try VisynPictureInPictureSize.save(capture.pictureInPictureContentSize)
+}
+
+try applyPiPSize(VisynPictureInPictureSize.portrait)
+try applyPiPSize(CGSize(width: 200, height: 120)) // 接入 App 的自定义输入或滑块值
+```
+
+宽高单位为内容布局点数，各维度允许 1～640 的有限值，四舍五入取整；无效输入抛出错误并保留原尺寸。上限限制 CPU 渲染和像素缓冲占用。
+
+`save` / `load` 默认使用主 App 的 `UserDefaults.standard` 和 `Visyn.pictureInPictureContentSize` 键，保存 `width`、`height` 数值。库不会自动读取或覆盖偏好，是否持久化由接入 App 决定。`load` 对缺失、损坏或越界记录返回 `nil`，可回退到 `.landscape`。需要自定义存储域或按场景隔离时，可传入相同的 `UserDefaults` 与键：
+
+```swift
+let defaults = UserDefaults.standard // 也可传入自己的 suite
+let key = "MyApp.readerPiPSize"
+try VisynPictureInPictureSize.save(CGSize(width: 80, height: 80), to: defaults, forKey: key)
+let restoredSize = VisynPictureInPictureSize.load(from: defaults, forKey: key)
+defaults.removeObject(forKey: key) // 清除已保存选择
+```
+
+这些数值决定内容布局与比例，不代表屏幕上悬浮窗的精确尺寸。跨 App 的系统画中画由 iOS 管理：单指拖动位置、双指张开放大／捏合缩小；系统限制最小／最大尺寸及停靠位置。相同比例的内容即使宽高同时加倍，也不保证悬浮窗加倍。运行中改变比例后的窗口重排效果需要真机验证。手势参考 [Apple 画中画使用指南](https://support.apple.com/guide/iphone/multitask-with-picture-in-picture-iphcc3587b5d/ios)。
+
+### 立绘层与动图
+
+`VisynPortraitView` 渲染通用立绘：主题底色 + 立绘图片，横向内容放左侧向右淡出，竖向内容放顶部向下淡出，
+几何由 `VisynPortraitLayout(size:)` 提供（宿主可在非主线程复用它推算遮挡区域）。宿主把自己的文案视图叠在上面，
+图片和主题色由宿主传入，库内不含业务文字。
+
+`VisynAnimatedImage` 解码 GIF，按单调时间戳选帧；`VisynAnimatedImageView` 实现
+`VisynPictureInPictureFrameRendering`，在每个 PiP 视频帧前切换图片，系统开启"减弱动态效果"时停在首帧。
+每帧回调会递归到内容视图的所有可见子视图，因此这些组件嵌套在宿主视图中也能生效；动图需要把
+`pictureInPictureFramesPerSecond` 调高（例如 15）。
+
+```swift
+let portrait = VisynPortraitView()
+hostContent.insertSubview(portrait, at: 0)          // 文案视图叠在上面
+portrait.setPortrait(image: avatar, tint: themeColor)
+
+let heart = VisynAnimatedImageView()
+heart.animation = VisynAnimatedImage(url: Bundle.main.url(forResource: "heartbeat", withExtension: "gif")!)
+heart.playsAnimation = true
 ```
 
 广播扩展只需一个本地子类，并在扩展 plist 的 `NSExtensionPrincipalClass` 指向它：
@@ -100,7 +166,7 @@ final class SampleHandler: VisynBroadcastSampleHandler {}
 Visyn/
 ├── Package.swift
 ├── Sources/
-│   ├── VisynCapture/       # 主 App 入口、PiP、静音承载视频
+│   ├── VisynCapture/       # 主 App 入口、PiP、立绘层、动图、静音承载视频
 │   ├── VisynBroadcast/     # ReplayKit 回调、帧节流和编码
 │   └── VisynTransport/     # 消息类型和 Wormhole 封装
 ├── Tests/VisynTransportTests/
@@ -131,10 +197,18 @@ xcodebuild -project Examples/VisynDemo/VisynDemo.xcodeproj \
   build CODE_SIGNING_ALLOWED=NO
 ```
 
-通信测试使用独立临时目录和真实 MMWormhole 实例，验证通知、二进制帧、清理、错误格式和过期／超限拒收。真机手动检查：系统授权／取消 → 收帧计数增长 → 白底「测试中」PiP → 切换其他 App → 返回 → 停止；另检查暂停／恢复和扩展终止后的状态复位。
+通信测试使用独立临时目录和真实 MMWormhole 实例，验证通知、二进制帧、清理、错误格式和过期／超限拒收。PiP 测试覆盖原长条默认值、三个预设、内容宽高对应的像素及视频格式尺寸、取整和非法尺寸拒绝，以及像素方向和内容更新。偏好测试使用独立 UserDefaults suite，覆盖保存／重新读取、自定义键隔离、非法写入保留旧值和损坏记录回退。
+
+由开发者在 Xcode 中运行测试并进行真机手动检查：
+
+1. 无保存记录时直接开启 PiP，确认保持原长条、白底「测试中」居中。
+2. 依次选择横屏 414 × 80、竖屏 80 × 60、矩形 80 × 80，再手动输入宽高；分别在开启前和 PiP 运行中操作，确认比例更新、内容不拉伸、窗口不意外关闭。
+3. 切换其他 App，单指移动 PiP、双指放大／缩小，再返回 Demo，确认内容持续更新。
+4. 输入非法值确认不影响已应用和已保存的尺寸；退出重开 Demo，确认恢复上次有效选择。小屏、横屏和大字体下确认页面可滚动、输入框和应用按钮可访问。
+5. 系统授权／取消 → 收帧计数增长 → PiP → 切换其他 App → 返回 → 停止；另检查暂停／恢复和扩展终止后的状态复位。
 
 ## 兼容性与依赖
 
-画中画使用 iOS 15+ 的 `AVSampleBufferDisplayLayer` 内容源，将调用方传入的 View 渲染为 828 × 160 视频帧，每秒更新两次。使用公开 PiP API，不再查找系统私有窗口、设置 `controlsStyle` 或播放静音承载视频，因此不会因找不到私有窗口而在启动后超时关闭。内容按 414 × 80 点布局；当前 CPU 渲染适用于 UILabel 等普通 UIKit 内容，不支持依赖独立视频或 Metal 渲染表面的视图，也不接收触摸。系统仍保留 PiP 的播放控件。
+画中画使用 iOS 15+ 的 `AVSampleBufferDisplayLayer` 内容源，将调用方传入的 View 按可配置的内容宽高布局，再以 2 倍像素尺寸渲染，每秒更新两次；默认仍为 414 × 80 点、828 × 160 像素。调整尺寸时清理待显示的旧帧并提交新比例视频帧。使用公开 PiP API，不再查找系统私有窗口、设置 `controlsStyle` 或播放静音承载视频，因此不会因找不到私有窗口而在启动后超时关闭。当前 CPU 渲染适用于 UILabel 等普通 UIKit 内容，不支持依赖独立视频或 Metal 渲染表面的视图，也不接收内容触摸。系统仍保留 PiP 的播放控件和移动／缩放手势。
 
 MMWormhole 2.0.0 上游没有 SPM manifest，本项目将其文件通信核心封装为 Objective-C target，保留原名称、来源及 [MIT 许可证](Vendor/MMWormhole/LICENSE)，不引入 WatchConnectivity。

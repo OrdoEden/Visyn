@@ -2,6 +2,14 @@ import AVKit
 import UIKit
 import VisynTransport
 
+/// Opt-in updates to the model layer before each PiP frame is rasterized.
+/// Select GIF frames using the monotonic timestamp; UIKit/Core Animation playback is not captured.
+/// Called on the content view and every descendant that conforms, parents before children.
+@MainActor
+public protocol VisynPictureInPictureFrameRendering: AnyObject {
+    func preparePictureInPictureFrame(at timestamp: TimeInterval)
+}
+
 /// Sends the caller's view to PiP as video frames, without accessing private windows.
 @MainActor
 final class VisynPictureInPicturePresenter: NSObject, AVPictureInPictureControllerDelegate,
@@ -16,11 +24,17 @@ final class VisynPictureInPicturePresenter: NSObject, AVPictureInPictureControll
     private var wantsStart = false
     private var isStarting = false
     private var frameTimer: Timer?
+    private let framesPerSecond: Int
+    private(set) var contentSize: CGSize
 
     var isActive: Bool { controller?.isPictureInPictureActive == true }
 
-    init(content: UIView) {
+    init(content: UIView, contentSize: CGSize = VisynPictureInPictureSize.landscape,
+         framesPerSecond: Int = 2) throws {
+        guard (1...30).contains(framesPerSecond) else { throw VisynError.invalidConfiguration }
         self.content = content
+        self.contentSize = try VisynPictureInPictureSize.validated(contentSize)
+        self.framesPerSecond = framesPerSecond
         super.init()
         NotificationCenter.default.addObserver(self, selector: #selector(resumePendingStart),
                                                name: UIApplication.didBecomeActiveNotification, object: nil)
@@ -70,7 +84,7 @@ final class VisynPictureInPicturePresenter: NSObject, AVPictureInPictureControll
         wantsStart = true
         controller?.canStartPictureInPictureAutomaticallyFromInline = true
         if frameTimer == nil {
-            let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
+            let timer = Timer(timeInterval: 1 / Double(framesPerSecond), repeats: true) { [weak self] _ in
                 Task { @MainActor in
                     guard let self else { return }
                     do { try self.renderFrame() }
@@ -101,18 +115,43 @@ final class VisynPictureInPicturePresenter: NSObject, AVPictureInPictureControll
         // If stop arrived during the start animation, didStart will finish stopping it.
     }
 
+    func setContentSize(_ size: CGSize) throws {
+        let size = try VisynPictureInPictureSize.validated(size)
+        guard size != contentSize else { return }
+        if controller != nil {
+            let previousBounds = content.bounds
+            let frame: CMSampleBuffer
+            do {
+                frame = try Self.makeFrame(from: content, size: size, framesPerSecond: framesPerSecond)
+            } catch {
+                content.bounds = previousBounds
+                content.setNeedsLayout()
+                throw error
+            }
+            // Discard queued frames with the old aspect ratio, preserving the displayed image.
+            layer.flush()
+            layer.enqueue(frame)
+        }
+        contentSize = size
+    }
+
     private func renderFrame() throws {
         if layer.status == .failed { layer.flush() }
         guard layer.isReadyForMoreMediaData else { return }
-        layer.enqueue(try Self.makeFrame(from: content))
+        layer.enqueue(try Self.makeFrame(from: content, size: contentSize, framesPerSecond: framesPerSecond))
     }
 
     /// CPU rendering also works while PiP keeps the app running in the background.
-    static func makeFrame(from content: UIView) throws -> CMSampleBuffer {
-        let size = CGSize(width: 414, height: 80)
-        let width = 828, height = 160
+    static func makeFrame(from content: UIView, size: CGSize = VisynPictureInPictureSize.landscape,
+                          framesPerSecond: Int = 2) throws -> CMSampleBuffer {
+        guard (1...30).contains(framesPerSecond) else { throw VisynError.invalidConfiguration }
+        let size = try VisynPictureInPictureSize.validated(size)
+        let timestamp = CMClockGetTime(CMClockGetHostTimeClock())
+        let width = Int(size.width) * 2, height = Int(size.height) * 2
         content.bounds = CGRect(origin: .zero, size: size)
         content.setNeedsLayout()
+        content.layoutIfNeeded()
+        prepareFrame(in: content, at: CMTimeGetSeconds(timestamp))
         content.layoutIfNeeded()
         var pixelBuffer: CVPixelBuffer?
         try check(CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA,
@@ -136,8 +175,8 @@ final class VisynPictureInPicturePresenter: NSObject, AVPictureInPictureControll
         try check(CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault,
                                                                imageBuffer: pixelBuffer, formatDescriptionOut: &format))
         guard let format else { throw VisynError.pipUnavailable }
-        var timing = CMSampleTimingInfo(duration: CMTime(value: 1, timescale: 2),
-                                        presentationTimeStamp: CMClockGetTime(CMClockGetHostTimeClock()),
+        var timing = CMSampleTimingInfo(duration: CMTime(value: 1, timescale: Int32(framesPerSecond)),
+                                        presentationTimeStamp: timestamp,
                                         decodeTimeStamp: .invalid)
         var sample: CMSampleBuffer?
         try check(CMSampleBufferCreateReadyWithImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: pixelBuffer,
@@ -145,6 +184,13 @@ final class VisynPictureInPicturePresenter: NSObject, AVPictureInPictureControll
                                                           sampleBufferOut: &sample))
         guard let sample else { throw VisynError.pipUnavailable }
         return sample
+    }
+
+    static func prepareFrame(in view: UIView, at timestamp: TimeInterval) {
+        (view as? VisynPictureInPictureFrameRendering)?.preparePictureInPictureFrame(at: timestamp)
+        for subview in view.subviews where !subview.isHidden {
+            prepareFrame(in: subview, at: timestamp)
+        }
     }
 
     private static func check(_ status: OSStatus) throws {
