@@ -12,7 +12,8 @@ public protocol VisynPictureInPictureFrameRendering: AnyObject {
 
 /// Sends the caller's view to PiP as video frames, without accessing private windows.
 @MainActor
-final class VisynPictureInPicturePresenter: NSObject, AVPictureInPictureControllerDelegate,
+final class VisynPictureInPicturePresenter: NSObject, VisynPictureInPicturePresenting,
+                                            AVPictureInPictureControllerDelegate,
                                             AVPictureInPictureSampleBufferPlaybackDelegate {
     var onChange: ((Bool) -> Void)?
     var onError: ((Error) -> Void)?
@@ -25,16 +26,19 @@ final class VisynPictureInPicturePresenter: NSObject, AVPictureInPictureControll
     private var isStarting = false
     private var frameTimer: Timer?
     private let framesPerSecond: Int
+    private let audioSession: VisynPictureInPictureAudioSession
     private(set) var contentSize: CGSize
 
     var isActive: Bool { controller?.isPictureInPictureActive == true }
 
     init(content: UIView, contentSize: CGSize = VisynPictureInPictureSize.landscape,
-         framesPerSecond: Int = 2) throws {
+         framesPerSecond: Int = 2,
+         audioSession: VisynPictureInPictureAudioSession = .playback) throws {
         guard (1...30).contains(framesPerSecond) else { throw VisynError.invalidConfiguration }
         self.content = content
         self.contentSize = try VisynPictureInPictureSize.validated(contentSize)
         self.framesPerSecond = framesPerSecond
+        self.audioSession = audioSession
         super.init()
         NotificationCenter.default.addObserver(self, selector: #selector(resumePendingStart),
                                                name: UIApplication.didBecomeActiveNotification, object: nil)
@@ -49,9 +53,7 @@ final class VisynPictureInPicturePresenter: NSObject, AVPictureInPictureControll
         guard controller == nil else { return }
         guard AVPictureInPictureController.isPictureInPictureSupported() else { throw VisynError.pipUnavailable }
         self.host = host
-        let audio = AVAudioSession.sharedInstance()
-        try audio.setCategory(.playback, mode: .moviePlayback, options: [.mixWithOthers])
-        try audio.setActive(true)
+        try VisynAudioSession.activate(audioSession)
         layer.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
         layer.videoGravity = .resizeAspect
         host.layer.insertSublayer(layer, at: 0)
@@ -186,6 +188,7 @@ final class VisynPictureInPicturePresenter: NSObject, AVPictureInPictureControll
         return sample
     }
 
+    /// 供两条路线共用：递归通知子视图按时间戳选动图帧。
     static func prepareFrame(in view: UIView, at timestamp: TimeInterval) {
         (view as? VisynPictureInPictureFrameRendering)?.preparePictureInPictureFrame(at: timestamp)
         for subview in view.subviews where !subview.isHidden {

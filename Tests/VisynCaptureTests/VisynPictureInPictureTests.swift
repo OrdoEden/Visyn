@@ -81,8 +81,7 @@ final class VisynPictureInPictureTests: XCTestCase {
         XCTAssertEqual(VisynPictureInPictureSize.landscape, CGSize(width: 414, height: 80))
         XCTAssertEqual(VisynPictureInPictureSize.portrait, CGSize(width: 90, height: 195))
         XCTAssertEqual(VisynPictureInPictureSize.presets.map(\.size),
-                       [VisynPictureInPictureSize.landscape, VisynPictureInPictureSize.portrait,
-                        VisynPictureInPictureSize.rectangle])
+                       [VisynPictureInPictureSize.landscape, VisynPictureInPictureSize.portrait])
         XCTAssertEqual(VisynPictureInPictureSize.rectangle, CGSize(width: 80, height: 80))
         for size in [VisynPictureInPictureSize.portrait, VisynPictureInPictureSize.rectangle,
                      CGSize(width: 301.4, height: 199.6), CGSize(width: 1, height: 640)] {
@@ -141,5 +140,22 @@ final class VisynPictureInPictureTests: XCTestCase {
             defaults.set(value, forKey: VisynPictureInPictureSize.userDefaultsKey)
             XCTAssertNil(VisynPictureInPictureSize.load(from: defaults))
         }
+    }
+
+    /// 路线只保存名字；没保存过与存了无法识别的值都当作未设置，由接入方决定默认值。
+    func testRoutePreferenceRoundTripAndRejectsUnknownValues() throws {
+        let suite = "VisynPictureInPictureTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertNil(VisynPictureInPictureRoute.load(from: defaults))
+
+        VisynPictureInPictureRoute.videoCall.save(to: defaults)
+        XCTAssertEqual(VisynPictureInPictureRoute.load(from: defaults), .videoCall)
+        VisynPictureInPictureRoute.sampleBuffer.save(to: defaults)
+        XCTAssertEqual(VisynPictureInPictureRoute.load(from: defaults), .sampleBuffer)
+
+        defaults.set("unknownRoute", forKey: VisynPictureInPictureRoute.userDefaultsKey)
+        XCTAssertNil(VisynPictureInPictureRoute.load(from: defaults))
+        XCTAssertEqual(VisynPictureInPictureRoute.presets.map(\.route), [.sampleBuffer, .videoCall])
     }
 }

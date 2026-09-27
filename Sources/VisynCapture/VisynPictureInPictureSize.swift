@@ -19,9 +19,8 @@ public enum VisynPictureInPictureSize {
     /// Square 1 : 1.
     public static let rectangle = CGSize(width: 80, height: 80)
     /// Presets in display order for host sizing UIs.
-    public static let presets = [Preset(title: "横条", size: landscape),
-                                 Preset(title: "竖屏（同微信）", size: portrait),
-                                 Preset(title: "方形", size: rectangle)]
+    public static let presets = [Preset(title: "横屏", size: landscape),
+                                 Preset(title: "竖屏", size: portrait)]
     public static let userDefaultsKey = "Visyn.pictureInPictureContentSize"
 
     /// Returns nil when no valid saved size exists; callers choose their fallback preset.

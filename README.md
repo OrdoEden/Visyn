@@ -93,9 +93,24 @@ func pipTapped() { capture?.togglePictureInPicture() }
 
 | 预设（`presets` 中的标题） | 接口 | 宽 × 高（点） | 比例 |
 | --- | --- | --- | --- |
-| 横条（默认） | `VisynPictureInPictureSize.landscape` | 414 × 80 | 约 5.2 : 1 |
-| 竖屏（同微信） | `VisynPictureInPictureSize.portrait` | 90 × 195 | 9 : 19.5 |
-| 方形 | `VisynPictureInPictureSize.rectangle` | 80 × 80 | 1 : 1 |
+| 横屏（默认） | `VisynPictureInPictureSize.landscape` | 414 × 80 | 约 5.2 : 1 |
+| 竖屏 | `VisynPictureInPictureSize.portrait` | 90 × 195 | 9 : 19.5 |
+
+`VisynPictureInPictureSize.rectangle`（80 × 80）仍可用作自定义尺寸，但不再出现在预设里。
+
+### 画中画路线
+
+| 路线 | 接口 | 小窗尺寸 | 播放控件 | 后台 |
+| --- | --- | --- | --- | --- |
+| 标准（默认） | `VisynPictureInPictureRoute.sampleBuffer` | 只由宽高比决定，实际大小由系统给 | 有 | 支持 |
+| 通话式 | `.videoCall` | `preferredContentSize` 同时决定尺寸与宽高比 | 无 | 未验证 |
+
+- 通话式用 `AVPictureInPictureVideoCallViewController` + `ContentSource(activeVideoCallSourceView:contentViewController:)`，
+  内容是真视图层次、由系统直接合成，不需要逐帧光栅化。
+- 它要求系统认作「通话在进行中」，并按通话形态配置音频会话（`VisynPictureInPictureAudioSession.videoCall`，
+  默认在 `.videoCall` 路线下启用）；被系统拒绝时会自动退回标准路线，接入方可通过
+  `VisynCaptureController.pictureInPictureRoute` 读取实际生效的路线。
+- 预设与本地保存：`VisynPictureInPictureRoute.presets` / `.save(to:)` / `.load(from:)`。
 
 `VisynPictureInPictureSize.presets` 按上表顺序提供标题和尺寸，接入 App 的设置页可直接用来生成预设按钮。
 
