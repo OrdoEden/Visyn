@@ -5,7 +5,7 @@ import CoreGraphics
 ///
 /// iOS only uses the content's aspect ratio to shape the PiP window; the window's on-screen size
 /// is chosen by the system (and the user's pinch). Width and height here set the layout points
-/// the content is drawn at, so 90 × 195 and 180 × 390 produce the same window shape.
+/// the content is drawn at, so 90 × 220 and 180 × 440 produce the same window shape.
 public enum VisynPictureInPictureSize {
     public struct Preset: Equatable, Sendable {
         public let title: String
@@ -14,8 +14,9 @@ public enum VisynPictureInPictureSize {
 
     /// The original horizontal strip, also used when no size is provided.
     public static let landscape = CGSize(width: 414, height: 80)
-    /// Vertical 9 : 19.5 (the iPhone screen ratio), the same shape as WeChat's video-call PiP.
-    public static let portrait = CGSize(width: 90, height: 195)
+    /// Vertical 9 : 22, a little slimmer than the iPhone screen (9 : 19.5) so the PiP window
+    /// stays narrower at the same system size.
+    public static let portrait = CGSize(width: 90, height: 220)
     /// Square 1 : 1.
     public static let rectangle = CGSize(width: 80, height: 80)
     /// Presets in display order for host sizing UIs.

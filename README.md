@@ -94,7 +94,7 @@ func pipTapped() { capture?.togglePictureInPicture() }
 | 预设（`presets` 中的标题） | 接口 | 宽 × 高（点） | 比例 |
 | --- | --- | --- | --- |
 | 横屏（默认） | `VisynPictureInPictureSize.landscape` | 414 × 80 | 约 5.2 : 1 |
-| 竖屏 | `VisynPictureInPictureSize.portrait` | 90 × 195 | 9 : 19.5 |
+| 竖屏 | `VisynPictureInPictureSize.portrait` | 90 × 220 | 9 : 22 |
 
 `VisynPictureInPictureSize.rectangle`（80 × 80）仍可用作自定义尺寸，但不再出现在预设里。
 
@@ -114,7 +114,7 @@ func pipTapped() { capture?.togglePictureInPicture() }
 
 `VisynPictureInPictureSize.presets` 按上表顺序提供标题和尺寸，接入 App 的设置页可直接用来生成预设按钮。
 
-iOS 只按内容的宽高比决定小窗形状，小窗在屏幕上的实际大小由系统决定（用户可双指缩放），所以 90 × 195 与 180 × 390 得到的小窗形状相同。“竖屏”采用 iPhone 屏幕比例 9 : 19.5，与微信视频通话小窗一致；比例过于细长（如 1 : 4）会让小窗在同样宽度下变得很长。省略初始化的 `pictureInPictureContentSize` 参数时仍为原来的 414 × 80，原有调用兼容。
+iOS 只按内容的宽高比决定小窗形状，小窗在屏幕上的实际大小由系统决定（用户可双指缩放），所以 90 × 220 与 180 × 440 得到的小窗形状相同。“竖屏”采用 9 : 22，比 iPhone 屏幕比例 9 : 19.5 略细长，同一档系统尺寸下小窗更窄；比例过于细长（如 1 : 4）会让小窗在同样宽度下变得很长。省略初始化的 `pictureInPictureContentSize` 参数时仍为原来的 414 × 80，原有调用兼容。
 
 开启前或运行中均可传入任意有效宽高。外部输入框或滑块在确认尺寸时调用同一接口：
 

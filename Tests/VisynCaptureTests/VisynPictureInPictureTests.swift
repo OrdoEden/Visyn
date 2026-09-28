@@ -79,7 +79,7 @@ final class VisynPictureInPictureTests: XCTestCase {
 
         // Reuse one content view to catch stale geometry when the user changes the shape.
         XCTAssertEqual(VisynPictureInPictureSize.landscape, CGSize(width: 414, height: 80))
-        XCTAssertEqual(VisynPictureInPictureSize.portrait, CGSize(width: 90, height: 195))
+        XCTAssertEqual(VisynPictureInPictureSize.portrait, CGSize(width: 90, height: 220))
         XCTAssertEqual(VisynPictureInPictureSize.presets.map(\.size),
                        [VisynPictureInPictureSize.landscape, VisynPictureInPictureSize.portrait])
         XCTAssertEqual(VisynPictureInPictureSize.rectangle, CGSize(width: 80, height: 80))
@@ -126,7 +126,7 @@ final class VisynPictureInPictureTests: XCTestCase {
         XCTAssertNil(VisynPictureInPictureSize.load(from: defaults))
         try VisynPictureInPictureSize.save(VisynPictureInPictureSize.portrait, to: defaults)
         let reopened = try XCTUnwrap(UserDefaults(suiteName: suite))
-        XCTAssertEqual(VisynPictureInPictureSize.load(from: reopened), CGSize(width: 90, height: 195))
+        XCTAssertEqual(VisynPictureInPictureSize.load(from: reopened), CGSize(width: 90, height: 220))
 
         try VisynPictureInPictureSize.save(CGSize(width: 123.4, height: 60.7), to: defaults, forKey: "custom")
         XCTAssertEqual(VisynPictureInPictureSize.load(from: defaults, forKey: "custom"), CGSize(width: 123, height: 61))
