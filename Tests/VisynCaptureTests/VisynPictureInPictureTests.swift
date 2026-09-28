@@ -50,8 +50,8 @@ final class VisynPictureInPictureTests: XCTestCase {
         XCTAssertTrue(CMSampleBufferDataIsReady(first))
         XCTAssertTrue(CMSampleBufferGetPresentationTimeStamp(first).isNumeric)
         let pixels = try XCTUnwrap(CMSampleBufferGetImageBuffer(first))
-        XCTAssertEqual(CVPixelBufferGetWidth(pixels), 828)
-        XCTAssertEqual(CVPixelBufferGetHeight(pixels), 160)
+        XCTAssertEqual(CVPixelBufferGetWidth(pixels), 1242)
+        XCTAssertEqual(CVPixelBufferGetHeight(pixels), 240)
         CVPixelBufferLockBaseAddress(pixels, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pixels, .readOnly) }
         let bytes = try XCTUnwrap(CVPixelBufferGetBaseAddress(pixels)).assumingMemoryBound(to: UInt8.self)
@@ -74,8 +74,13 @@ final class VisynPictureInPictureTests: XCTestCase {
         let defaultFrame = try VisynPictureInPicturePresenter.makeFrame(from: view)
         let defaultPixels = try XCTUnwrap(CMSampleBufferGetImageBuffer(defaultFrame))
         XCTAssertEqual(view.bounds.size, CGSize(width: 414, height: 80))
-        XCTAssertEqual(CVPixelBufferGetWidth(defaultPixels), 828)
-        XCTAssertEqual(CVPixelBufferGetHeight(defaultPixels), 160)
+        XCTAssertEqual(CVPixelBufferGetWidth(defaultPixels), 1242)
+        XCTAssertEqual(CVPixelBufferGetHeight(defaultPixels), 240)
+        // Render density fills ~1280 px on the long side so small layouts stay sharp.
+        XCTAssertEqual(VisynPictureInPicturePresenter.renderScale(for: VisynPictureInPictureSize.landscape), 3)
+        XCTAssertEqual(VisynPictureInPicturePresenter.renderScale(for: VisynPictureInPictureSize.portrait), 5)
+        XCTAssertEqual(VisynPictureInPicturePresenter.renderScale(for: CGSize(width: 40, height: 60)), 6)
+        XCTAssertEqual(VisynPictureInPicturePresenter.renderScale(for: CGSize(width: 1, height: 640)), 2)
 
         // Reuse one content view to catch stale geometry when the user changes the shape.
         XCTAssertEqual(VisynPictureInPictureSize.landscape, CGSize(width: 414, height: 80))
@@ -90,8 +95,9 @@ final class VisynPictureInPictureTests: XCTestCase {
             let format = try XCTUnwrap(CMSampleBufferGetFormatDescription(sample))
             let dimensions = CMVideoFormatDescriptionGetDimensions(format)
             XCTAssertEqual(view.bounds.size, CGSize(width: size.width.rounded(), height: size.height.rounded()))
-            XCTAssertEqual(CVPixelBufferGetWidth(pixels), Int(size.width.rounded()) * 2)
-            XCTAssertEqual(CVPixelBufferGetHeight(pixels), Int(size.height.rounded()) * 2)
+            let scale = VisynPictureInPicturePresenter.renderScale(for: view.bounds.size)
+            XCTAssertEqual(CVPixelBufferGetWidth(pixels), Int(size.width.rounded() * scale))
+            XCTAssertEqual(CVPixelBufferGetHeight(pixels), Int(size.height.rounded() * scale))
             XCTAssertEqual(Int(dimensions.width), CVPixelBufferGetWidth(pixels))
             XCTAssertEqual(Int(dimensions.height), CVPixelBufferGetHeight(pixels))
             XCTAssertTrue(CMSampleBufferIsValid(sample))

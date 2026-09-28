@@ -149,8 +149,10 @@ final class VisynPictureInPicturePresenter: NSObject, VisynPictureInPicturePrese
         guard (1...30).contains(framesPerSecond) else { throw VisynError.invalidConfiguration }
         let size = try VisynPictureInPictureSize.validated(size)
         let timestamp = CMClockGetTime(CMClockGetHostTimeClock())
-        let width = Int(size.width) * 2, height = Int(size.height) * 2
+        let scale = renderScale(for: size)
+        let width = Int(size.width * scale), height = Int(size.height * scale)
         content.bounds = CGRect(origin: .zero, size: size)
+        applyContentScale(scale, to: content)
         content.setNeedsLayout()
         content.layoutIfNeeded()
         prepareFrame(in: content, at: CMTimeGetSeconds(timestamp))
@@ -171,7 +173,7 @@ final class VisynPictureInPicturePresenter: NSObject, VisynPictureInPicturePrese
         context.setFillColor(UIColor.white.cgColor)
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
         context.translateBy(x: 0, y: CGFloat(height))
-        context.scaleBy(x: 2, y: -2)
+        context.scaleBy(x: scale, y: -scale)
         content.layer.render(in: context)
         var format: CMVideoFormatDescription?
         try check(CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault,
@@ -186,6 +188,38 @@ final class VisynPictureInPicturePresenter: NSObject, VisynPictureInPicturePrese
                                                           sampleBufferOut: &sample))
         guard let sample else { throw VisynError.pipUnavailable }
         return sample
+    }
+
+    /// Long side of the rendered frame, in pixels. The system scales the video up to the PiP
+    /// window, so small layout sizes (e.g. the 90 × 220 portrait preset) need a higher density
+    /// to stay sharp. Matches the 1280 × 1280 buffer bound in `VisynPictureInPictureSize`.
+    static let targetPixelLength: CGFloat = 1280
+
+    /// Integer pixels-per-point for a content size: at least 2, at most 6.
+    static func renderScale(for size: CGSize) -> CGFloat {
+        let longSide = max(size.width, size.height, 1)
+        return min(6, max(2, (targetPixelLength / longSide).rounded(.down)))
+    }
+
+    /// Offscreen views are not in a window, so their backing stores default to the screen
+    /// (or 1×) scale; text would then be upsampled into the larger buffer and look blurry.
+    /// Only touches layers whose scale differs, so steady-state frames do not force redraws.
+    static func applyContentScale(_ scale: CGFloat, to view: UIView) {
+        if view.contentScaleFactor != scale { view.contentScaleFactor = scale }
+        for sublayer in view.layer.sublayers ?? [] where !(sublayer.delegate is UIView) {
+            applyContentScale(scale, to: sublayer)
+        }
+        for subview in view.subviews { applyContentScale(scale, to: subview) }
+    }
+
+    private static func applyContentScale(_ scale: CGFloat, to layer: CALayer) {
+        if layer.contentsScale != scale {
+            layer.contentsScale = scale
+            layer.setNeedsDisplay()
+        }
+        for sublayer in layer.sublayers ?? [] where !(sublayer.delegate is UIView) {
+            applyContentScale(scale, to: sublayer)
+        }
     }
 
     /// 供两条路线共用：递归通知子视图按时间戳选动图帧。
